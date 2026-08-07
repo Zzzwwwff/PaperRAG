@@ -50,6 +50,7 @@ class PaperAgent:
             shutil.rmtree(UPLOAD_DIR)
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         self.session_docs = {}
+        self.messages = None       # 重置对话历史
         # 同步清空内存中的解析缓存
         from src.tools.registry import clear_parsed_docs
         clear_parsed_docs()
@@ -104,6 +105,19 @@ class PaperAgent:
             "kb_papers": get_stats().get("papers", []),
             "uploaded": list(self.session_docs.keys()),
         }
+
+    def get_history(self) -> list:
+        """返回对话历史（仅 user + assistant 消息，供前端恢复）"""
+        if not self.messages:
+            return []
+        history = []
+        for m in self.messages:
+            # 兼容 dict 和 ChatCompletionMessage 两种格式
+            role = m["role"] if isinstance(m, dict) else getattr(m, "role", "")
+            content = m["content"] if isinstance(m, dict) else getattr(m, "content", "")
+            if role in ("user", "assistant") and content:
+                history.append({"role": role, "content": content})
+        return history
 
 
 # ===== 全局单例 =====

@@ -22,6 +22,30 @@ logger = logging.getLogger(__name__)
 _client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
 
+def _safe_messages(msgs):
+    """确保消息列表全部为可 JSON 序列化的 dict"""
+    out = []
+    for m in msgs:
+        if isinstance(m, dict):
+            out.append(m)
+        else:
+            # ChatCompletionMessage 等对象 → dict
+            role = getattr(m, "role", "")
+            content = getattr(m, "content", None)
+            tc = getattr(m, "tool_calls", None)
+            entry = {"role": role, "content": content}
+            if tc:
+                entry["tool_calls"] = [
+                    {"id": t.id, "type": "function",
+                     "function": {"name": t.function.name, "arguments": t.function.arguments}}
+                    for t in tc
+                ]
+            elif hasattr(m, "tool_call_id"):
+                entry["tool_call_id"] = m.tool_call_id
+            out.append(entry)
+    return out
+
+
 def _trim_messages(messages):
     """滑动窗口裁剪"""
     if len(messages) <= MAX_HISTORY_ROUNDS * 3 + 1:
@@ -81,7 +105,11 @@ def run_agent(user_input, messages=None):
             return answer, messages
 
         # 有 tool_calls → 执行工具
-        messages.append(msg)
+        # 转为纯 dict，避免 ChatCompletionMessage 序列化问题
+        tc_list = [{"id": t.id, "type": "function",
+                     "function": {"name": t.function.name, "arguments": t.function.arguments}}
+                   for t in msg.tool_calls]
+        messages.append({"role": "assistant", "content": msg.content, "tool_calls": tc_list})
         tool_results = []
 
         for tc in msg.tool_calls:
@@ -105,13 +133,16 @@ def run_agent(user_input, messages=None):
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
-        # —— 防死循环：统计本轮工具调用次数 ——
+        # —— 防死循环：检测相同参数重复调用（parse_document 除外）——
         for tc in msg.tool_calls:
             name = tc.function.name
-            tool_call_counts[name] = tool_call_counts.get(name, 0) + 1
+            if name == "parse_document":
+                continue
+            args_key = tc.function.arguments[:80]
+            dup_key = f"{name}:{args_key}"
+            tool_call_counts[dup_key] = tool_call_counts.get(dup_key, 0) + 1
 
-        # 同一工具连续调用 ≥3 次 → 强制终止并回答
-        dup_tools = [t for t, c in tool_call_counts.items() if c >= 3]
+        dup_tools = [k for k, c in tool_call_counts.items() if c >= 2]
         if dup_tools:
             logger.warning(f"死循环检测: {dup_tools} 已调用 {tool_call_counts} 次，强制回答")
             answer = "⚠️ 检测到重复搜索，请尝试更具体的问题（如指定论文名称、作者等）。"
@@ -162,7 +193,7 @@ def run_agent_stream(user_input, messages=None):
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             yield {"type": "token", "content": f"\n⚠️ LLM 服务异常: {e}"}
-            yield {"type": "done", "messages": messages}
+            yield {"type": "done", "messages": _safe_messages(messages)}
             return
 
         # 收集流式响应
@@ -207,16 +238,15 @@ def run_agent_stream(user_input, messages=None):
         if not tool_calls:
             answer = "".join(content_parts)
             messages.append({"role": "assistant", "content": answer})
-            yield {"type": "done", "messages": messages}
+            yield {"type": "done", "messages": _safe_messages(messages)}
             return
 
-        # 有 tool_calls → 执行工具
-        from openai.types.chat.chat_completion_message import ChatCompletionMessage
-        msg = ChatCompletionMessage(
-            role="assistant", content="".join(content_parts) or None,
-            tool_calls=tool_calls,
-        )
-        messages.append(msg)
+        # 有 tool_calls → 执行工具（转为纯 dict）
+        messages.append({
+            "role": "assistant",
+            "content": "".join(content_parts) or None,
+            "tool_calls": tool_calls,
+        })
 
         for tc in tool_calls:
             name = tc["function"]["name"]
@@ -236,18 +266,22 @@ def run_agent_stream(user_input, messages=None):
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
-        # —— 防死循环：统计本轮工具调用次数 ——
+        # —— 防死循环：检测相同参数重复调用（parse_document 除外）——
         for tc in tool_calls:
             name = tc["function"]["name"]
-            tool_call_counts[name] = tool_call_counts.get(name, 0) + 1
+            if name == "parse_document":
+                continue  # 允许重复解析
+            args_key = tc["function"]["arguments"][:80]
+            dup_key = f"{name}:{args_key}"
+            tool_call_counts[dup_key] = tool_call_counts.get(dup_key, 0) + 1
 
-        dup_tools = [t for t, c in tool_call_counts.items() if c >= 3]
+        dup_tools = [k for k, c in tool_call_counts.items() if c >= 2]
         if dup_tools:
-            logger.warning(f"死循环检测(stream): {dup_tools} 已调用 {tool_call_counts} 次，强制回答")
+            logger.warning(f"死循环检测(stream): {dup_tools}，强制回答")
             answer = "⚠️ 检测到重复搜索，请尝试更具体的问题。"
             messages.append({"role": "assistant", "content": answer})
             yield {"type": "token", "content": answer}
-            yield {"type": "done", "messages": messages}
+            yield {"type": "done", "messages": _safe_messages(messages)}
             return
 
         if round_num >= MAX_ROUNDS - 1:
@@ -260,7 +294,7 @@ def run_agent_stream(user_input, messages=None):
     answer = "⚠️ 已达到搜索上限。"
     messages.append({"role": "assistant", "content": answer})
     yield {"type": "token", "content": answer}
-    yield {"type": "done", "messages": messages}
+    yield {"type": "done", "messages": _safe_messages(messages)}
 
 
 def build_rag_prompt(query, hits):

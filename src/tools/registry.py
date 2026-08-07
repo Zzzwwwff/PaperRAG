@@ -174,8 +174,36 @@ def _find_pdf(file_ref):
 
 
 def _parse_document(file_ref):
+    # 缓存命中：已解析过直接返回
+    if file_ref in _parsed_docs:
+        doc = _parsed_docs[file_ref]
+        return {"success": True, "data": {
+            "file_ref": file_ref,
+            "title": doc["paper"]["title"][:100],
+            "authors": doc["paper"].get("authors", "Unknown")[:100],
+            "sections": len(doc["paper"].get("sections", [])),
+            "chunks": len(doc["chunks"]),
+            "abstract": doc["chunks"][0]["text"][:500] if doc["chunks"] else "",
+            "message": f"(缓存) {doc['paper'].get('authors', '')[:30]}, 共 {len(doc['chunks'])} 个段落",
+            "cached": True,
+        }}
+
     hits = _find_pdf(file_ref)
     if not hits:
+        # 文件系统没找到 → 尝试从缓存匹配标题
+        for key, doc in _parsed_docs.items():
+            title = doc["paper"].get("title", "")
+            if file_ref.lower() in title.lower() or title.lower() in file_ref.lower():
+                return {"success": True, "data": {
+                    "file_ref": key,
+                    "title": title[:100],
+                    "authors": doc["paper"].get("authors", "Unknown")[:100],
+                    "sections": len(doc["paper"].get("sections", [])),
+                    "chunks": len(doc["chunks"]),
+                    "abstract": doc["chunks"][0]["text"][:500] if doc["chunks"] else "",
+                    "message": f"(缓存) {doc['paper'].get('authors', '')[:30]}, 共 {len(doc['chunks'])} 个段落",
+                    "cached": True,
+                }}
         from config import PDF_DIR, UPLOAD_DIR
         all_pdfs = list(UPLOAD_DIR.glob("*.pdf")) + list(PDF_DIR.glob("*.pdf"))
         return {"success": False, "error": {"code": "FILE_NOT_FOUND",
