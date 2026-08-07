@@ -1,0 +1,25 @@
+# ===== 环境基础 =====
+python-dotenv>=1.0,<2
+
+# ===== LLM 客户端 =====
+openai>=1.0,<3
+
+# ===== Embedding + Reranker =====
+sentence-transformers>=2.7,<4
+
+# ===== 向量数据库 =====
+chromadb>=0.5,<0.7
+
+# ===== PDF 解析 =====
+pdfplumber>=0.11
+
+# ===== 检索与计算 =====
+scikit-learn>=1.5,<2
+numpy>=1.26,<3
+
+# ===== 联网搜索 =====
+tavily-python>=0.3,<1
+
+# ===== Web API =====
+fastapi>=0.110,<1
+uvicorn[standard]>=0.27,<1
