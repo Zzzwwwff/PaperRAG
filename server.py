@@ -44,9 +44,29 @@ async def status():
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    """上传 PDF → 临时区"""
+    """上传 PDF → 临时区 → 自动解析 → 通知 Agent"""
     content = await file.read()
     result = agent.upload_pdf(file.filename, content)
+
+    if result.get("status") != "ok":
+        return JSONResponse(status_code=400, content=result)
+
+    # 自动解析，对齐 CLI 行为
+    parse_result = agent.tool("parse_document", {"file_ref": result["filename"]})
+    if parse_result.get("success"):
+        data = parse_result["data"]
+        agent.notify_document(
+            data["file_ref"], data["title"],
+            data.get("authors", "Unknown"), data["chunks"],
+        )
+        result["parse"] = {
+            "title": data["title"],
+            "authors": data.get("authors", ""),
+            "chunks": data["chunks"],
+        }
+    else:
+        result["parse"] = {"error": parse_result.get("error", {}).get("message", "解析失败")}
+
     return result
 
 

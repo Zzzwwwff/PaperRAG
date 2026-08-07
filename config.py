@@ -9,6 +9,7 @@
 import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -120,22 +121,43 @@ LOG_DATE_FMT = "%m-%d %H:%M:%S"
 
 
 def setup_logging():
-    """初始化日志：控制台 + 文件（文件始终记 DEBUG）"""
+    """初始化日志。
+    - 控制台: 只显示 WARNING 及以上（CLI 保持干净）
+    - 文件:   DEBUG 全量记录（排查问题看日志）
+    - 可用 LOG_LEVEL 环境变量临时提高控制台详细度
+    """
+    console_level = os.getenv("LOG_LEVEL", "WARNING")
+
     console = logging.StreamHandler(sys.stdout)
-    console.setLevel(LOG_LEVEL)
+    console.setLevel(console_level)
     console.setFormatter(logging.Formatter(CONSOLE_LOG_FMT, LOG_DATE_FMT))
 
     handlers = [console]
 
     if LOG_DIR:
-        file_handler = logging.FileHandler(
-            LOG_DIR / "agent.log", encoding="utf-8"
+        file_handler = RotatingFileHandler(
+            LOG_DIR / "agent.log",
+            maxBytes=5 * 1024 * 1024,    # 单个文件 5MB
+            backupCount=3,               # 保留 3 个旧日志
+            encoding="utf-8",
         )
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter(FILE_LOG_FMT, LOG_DATE_FMT))
         handlers.append(file_handler)
 
-    logging.basicConfig(level=LOG_LEVEL, handlers=handlers, force=True)
+    logging.basicConfig(level="DEBUG", handlers=handlers, force=True)
+
+    # 压掉第三方库的噪音日志（含子日志器！）
+    _NOISY = [
+        "httpx", "httpcore", "urllib3",
+        "sentence_transformers", "chromadb",
+        "openai", "tavily",
+        "pdfminer", "pdfminer.psparser", "pdfminer.pdfinterp",
+        "pdfminer.pdfdevice", "pdfminer.cmapdb", "pdfminer.encodingdb",
+        "PIL", "matplotlib",
+    ]
+    for name in _NOISY:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
     logger.info(f"配置加载完成 | 模型: {LLM_MODEL} | PDF目录: {PDF_DIR}")
@@ -165,6 +187,12 @@ SYSTEM_PROMPT = """你是一个论文知识库助手。你可以使用以下工�
 - **如果 search_kb 返回失败或结果为空，必须立即调用 search_web 联网搜索**，不要重复尝试 search_kb
 - 涉及具体论文名称时，先用 parse_document 解析
 - 入库操作必须在最终答案中向用户确认
+
+**防循环规则（极其重要）**:
+- **同一工具最多调用 2 次**，第 2 次后无论结果如何都必须给出回答
+- 如果 search_kb 返回了结果但你觉得不够好 → 不要重试 search_kb，直接基于已有结果回答
+- 每次调用工具前问自己：这次调用能带来新信息吗？如果不能，不要调用
+- **永远不要连续 2 次调用同一个工具**，至少交替使用不同工具
 
 回答规则:
 - **必须始终给用户一个有用的回答**，即使检索失败也要基于已有知识回答，并说明信息来源

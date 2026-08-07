@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import logging
 from config import UPLOAD_DIR, PDF_DIR
-from src.agent import run_agent
+from src.agent import run_agent, run_agent_stream
 from src.storage.vector_store import get_stats
 from src.tools.registry import execute_tool
 
@@ -50,6 +50,9 @@ class PaperAgent:
             shutil.rmtree(UPLOAD_DIR)
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         self.session_docs = {}
+        # 同步清空内存中的解析缓存
+        from src.tools.registry import clear_parsed_docs
+        clear_parsed_docs()
         logger.info("临时上传区已清空")
 
     # ===== 对话 =====
@@ -57,6 +60,31 @@ class PaperAgent:
         """处理用户输入，返回 (answer, rounds)"""
         answer, self.messages = run_agent(user_input, self.messages)
         return answer
+
+    def ask_stream(self, user_input: str):
+        """流式对话，生成器产出一个事件 dict"""
+        for event in run_agent_stream(user_input, self.messages):
+            if event["type"] == "done":
+                self.messages = event["messages"]
+            yield event
+
+    def notify_document(self, file_ref: str, title: str, authors: str, chunks: int):
+        """把刚解析的文档信息注入对话上下文，让 Agent 记住"""
+        note = (
+            f"[系统提示] 用户刚上传并解析了一篇论文:\n"
+            f"  file_ref: {file_ref}\n"
+            f"  标题: {title}\n"
+            f"  作者: {authors}\n"
+            f"  段落数: {chunks}\n"
+            f"用户之后提到\"这篇论文\"、\"上传的文献\"时，指的就是这篇。"
+            f"如需详细内容请调用 parse_document(file_ref=\"{file_ref}\")。"
+        )
+        if self.messages is None:
+            from src.agent import run_agent
+            from config import SYSTEM_PROMPT
+            self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages.append({"role": "system", "content": note})
+        logger.info(f"注入文档上下文: {title[:40]}")
 
     # ===== 工具封装（供 CLI/Web 直接调用） =====
     def tool(self, name: str, args: dict) -> dict:

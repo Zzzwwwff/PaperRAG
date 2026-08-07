@@ -51,7 +51,15 @@ def hash_exists(paper_hash: str) -> bool:
 
 
 def add_chunks(chunks, embeddings, paper_hash=""):
-    """批量写入 chunks（文本 + 向量 + 元数据）"""
+    """批量写入 chunks（文本 + 向量 + 元数据）
+    内置内容级查重：paper_hash 已存在则跳过。
+    返回实际写入的 chunk 数。
+    """
+    # 内容级查重（最后一层防线，即使调用方忘了检查也能拦）
+    if paper_hash and hash_exists(paper_hash):
+        logger.warning(f"跳过: 内容重复 (hash={paper_hash})")
+        return 0
+
     col = _get_collection()
     ids = []
     docs = []
@@ -73,6 +81,7 @@ def add_chunks(chunks, embeddings, paper_hash=""):
         vecs.append(emb.tolist())
     col.add(ids=ids, documents=docs, metadatas=metas, embeddings=vecs)
     logger.info(f"入库: {len(chunks)} chunks")
+    return len(chunks)
 
 
 def search(query_embedding, top_k=20):

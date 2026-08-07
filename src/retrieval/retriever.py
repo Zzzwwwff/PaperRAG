@@ -39,6 +39,14 @@ def _init_tfidf():
     logger.info(f"TF-IDF 索引: {_tfidf_matrix.shape[0]} docs, {_tfidf_matrix.shape[1]} terms")
 
 
+def rebuild_tfidf():
+    """强制重建 TF-IDF 索引（新文档入库后调用）"""
+    global _tfidf_vec, _tfidf_matrix
+    _tfidf_vec = None
+    _tfidf_matrix = None
+    _init_tfidf()
+
+
 def _get_reranker():
     global _reranker
     if _reranker is None:

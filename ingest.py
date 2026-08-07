@@ -4,8 +4,8 @@
 将 pdf_db/ 下所有 PDF 解析 → 分块 → 向量化 → 写入 ChromaDB。
 
 用法:
-    python ingest.py                  # 全量入库
-    python ingest.py --skip-existing  # 跳过已入库的论文
+    python ingest.py          # 增量入库（跳过已入库的论文）
+    python ingest.py --no-skip  # 强制全量入库
 """
 import sys
 import argparse
@@ -75,13 +75,11 @@ def ingest_all(skip_existing: bool = True):
 
 def main():
     parser = argparse.ArgumentParser(description="构建论文知识库")
-    parser.add_argument("--skip-existing", action="store_true", default=True,
-                        help="跳过已入库的论文")
-    parser.add_argument("--no-skip", action="store_true", help="强制全量入库")
+    parser.add_argument("--no-skip", action="store_true",
+                        help="强制全量入库（默认跳过已入库的论文）")
     args = parser.parse_args()
 
-    skip = not args.no_skip
-    ingest_all(skip_existing=skip)
+    ingest_all(skip_existing=not args.no_skip)
 
 
 if __name__ == "__main__":
