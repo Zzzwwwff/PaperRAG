@@ -1,4 +1,4 @@
-# 📚 PaperMate — 论文知识库 RAG 智能体
+# 📚 PaperMate — 论文知识库 RAG 智能体（未完成版本）
 
 基于 **ReAct Agent + 混合检索 + Reranker** 的个人论文知识库问答系统。中英文论文 PDF 自动入库，自然语言问答，支持联网兜底、文档入库、Web 界面。
 
