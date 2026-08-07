@@ -161,7 +161,7 @@ if __name__ == "__main__":
     from src.ingestion.pdf_parser import parse_pdf
     from src.ingestion.chunker import chunk_paper
     from src.embedding.embedder import embed_chunks
-    from src.storage.vector_store import add_chunks, clear, get_stats
+    from src.storage.vector_store import add_chunks
     from config import PDF_DIR
 
     pdfs = sorted(PDF_DIR.glob("*.pdf"))
@@ -177,5 +177,6 @@ if __name__ == "__main__":
     for h in hits:
         print(f"  [{h['score']:.4f}] {h['text'][:60].replace(chr(10),' ')}")
 
-    clear()
+    print("\n⚠️ 测试数据已加入知识库（未清理）。如需清理请手动执行:")
+    print('  from src.storage.vector_store import clear; clear(confirm=True)')
 

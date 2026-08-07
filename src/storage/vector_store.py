@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import logging
+import hashlib
 import chromadb
 from chromadb.config import Settings
 from config import VECTOR_DB_DIR, EMBED_DIM
@@ -35,7 +36,21 @@ def _get_collection():
     )
 
 
-def add_chunks(chunks, embeddings):
+def compute_paper_hash(full_text: str) -> str:
+    """计算论文文本内容 hash（内容级查重用）"""
+    return hashlib.sha256(full_text.encode("utf-8")).hexdigest()[:16]
+
+
+def hash_exists(paper_hash: str) -> bool:
+    """检查某篇论文是否已入库（按内容 hash）"""
+    if not paper_hash:
+        return False
+    col = _get_collection()
+    metas = col.get(include=["metadatas"])["metadatas"] or []
+    return any(m.get("paper_hash") == paper_hash for m in metas)
+
+
+def add_chunks(chunks, embeddings, paper_hash=""):
     """批量写入 chunks（文本 + 向量 + 元数据）"""
     col = _get_collection()
     ids = []
@@ -53,6 +68,7 @@ def add_chunks(chunks, embeddings):
             "section": chunk.get("section", ""),
             "chunk_index": chunk["chunk_index"],
             "has_formula": chunk.get("has_formula", False),
+            "paper_hash": paper_hash,
         })
         vecs.append(emb.tolist())
     col.add(ids=ids, documents=docs, metadatas=metas, embeddings=vecs)
@@ -111,8 +127,11 @@ def get_stats():
     return {"total_chunks": len(metas), "total_papers": len(papers), "papers": sorted(papers)}
 
 
-def clear():
-    """清空知识库"""
+def clear(confirm: bool = False):
+    """清空知识库（需显式确认，防止误删）"""
+    if not confirm:
+        logger.warning("clear() 需要 confirm=True 才会执行，已跳过")
+        return
     col = _get_collection()
     all_ids = col.get()["ids"]
     if all_ids:
@@ -141,8 +160,6 @@ if __name__ == "__main__":
     print(f"\n查询: {paper['title'][:40]}")
     for h in hits:
         print(f"  [{h['score']:.4f}] {h['text'][:60]}")
-
-    # 清理测试数据
-    clear()
-    print("\n测试数据已清空")
+    print("\n⚠️ 测试数据已加入知识库（未清理）。如需清理请手动执行:")
+    print('  from src.storage.vector_store import clear; clear(confirm=True)')
 

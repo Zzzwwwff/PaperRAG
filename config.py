@@ -20,11 +20,12 @@ load_dotenv()
 # ============================================================================
 PROJECT_ROOT = Path(__file__).parent
 PDF_DIR = PROJECT_ROOT / os.getenv("PDF_DIR", "pdf_db")
+UPLOAD_DIR = PROJECT_ROOT / "uploads"       # 临时上传区（进程启动时清空）
 VECTOR_DB_DIR = PROJECT_ROOT / "chroma_db"
 LOG_DIR = PROJECT_ROOT / "logs"
 
 # 自动创建必要目录
-for d in [PDF_DIR, VECTOR_DB_DIR, LOG_DIR]:
+for d in [PDF_DIR, UPLOAD_DIR, VECTOR_DB_DIR, LOG_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -157,12 +158,18 @@ SYSTEM_PROMPT = """你是一个论文知识库助手。你可以使用以下工�
 4. 如果信息不够，继续调用工具
 5. 信息足够后，给出最终答案
 
-规则:
-- 已知的常识性问题可以直接回答，但涉及实时信息（天气、新闻、最新进展）应调用 search_web
-- 学术问题优先搜索知识库，结果不理想再联网
+工具使用规则:
+- 已知的常识性问题可以直接回答，无需调用工具
+- 涉及实时信息（天气、新闻、最新进展）直接调用 search_web
+- 学术问题优先调用 search_kb
+- **如果 search_kb 返回失败或结果为空，必须立即调用 search_web 联网搜索**，不要重复尝试 search_kb
 - 涉及具体论文名称时，先用 parse_document 解析
 - 入库操作必须在最终答案中向用户确认
-- 如果知识库和网络都找不到答案，诚实告知
+
+回答规则:
+- **必须始终给用户一个有用的回答**，即使检索失败也要基于已有知识回答，并说明信息来源
+- 基于知识库/网络结果回答时注明来源
+- 如果所有检索都失败，坦诚说明，但基于自己的知识给出参考答案，不要只说"找不到"
 """
 
 RAG_PROMPT_TEMPLATE = """【参考资料】

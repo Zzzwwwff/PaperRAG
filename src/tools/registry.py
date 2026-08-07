@@ -13,7 +13,7 @@ from src.retrieval.web_search import search_web
 from src.ingestion.pdf_parser import parse_pdf
 from src.ingestion.chunker import chunk_paper
 from src.embedding.embedder import embed_chunks
-from src.storage.vector_store import add_chunks, get_stats
+from src.storage.vector_store import add_chunks, get_stats, compute_paper_hash, hash_exists
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def _ingest_document(file_ref):
                 "message": f"未找到匹配 '{file_ref}' 的PDF"}}
 
     path = hits[0]
-    # 检查重复
+    # 检查重复（文件名）
     stats = get_stats()
     if path.name in stats.get("papers", []):
         return {"success": False, "error": {"code": "DUPLICATE_INGEST",
@@ -154,13 +154,38 @@ def _ingest_document(file_ref):
     if not paper:
         return {"success": False, "error": {"code": "FILE_PARSE_ERROR"}}
 
+    # 内容级查重（文件名不同但内容相同）
+    paper_hash = compute_paper_hash(paper["full_text"])
+    if hash_exists(paper_hash):
+        return {"success": False, "error": {"code": "DUPLICATE_INGEST",
+                "message": "内容相同的论文已在知识库中"}}
+
     chunks = chunk_paper(paper)
     embeddings = embed_chunks(chunks)
-    add_chunks(chunks, embeddings)
+    add_chunks(chunks, embeddings, paper_hash)
 
     return {"success": True, "data": {
         "title": paper["title"][:100],
         "chunks": len(chunks),
         "message": f"已入库: {paper['title'][:50]}, 共 {len(chunks)} 个片段"
     }}
+
+
+# ===== quick test =====
+if __name__ == "__main__":
+    print("=== 1. search_kb（空库测试）===")
+    r = execute_tool("search_kb", {"query": "相位噪声"})
+    print(r)
+
+    print("\n=== 2. search_web ===")
+    r = execute_tool("search_web", {"query": "oscillator phase noise"})
+    print(f"success: {r.get('success')}, 结果数: {len(r.get('data', [])) if r.get('success') else 0}")
+
+    print("\n=== 3. parse_document ===")
+    r = execute_tool("parse_document", {"file_ref": "Demir"})
+    print(r)
+
+    print("\n=== 4. 未知工具 ===")
+    r = execute_tool("nonexistent", {})
+    print(r)
 

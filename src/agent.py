@@ -102,12 +102,9 @@ def run_agent(user_input, messages=None):
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
-        # 如果所有工具都失败了，直接告知用户
-        if all(not r.get("success") for r in tool_results):
-            errors = [r.get("error", {}).get("message", "") for r in tool_results]
-            answer = f"⚠️ 所有工具调用失败: {'; '.join(errors)}"
-            messages.append({"role": "assistant", "content": answer})
-            return answer, messages
+        # 工具结果已返回给 LLM（含错误信息），让它基于已有知识继续回答
+        # 不再短路 —— 由 LLM 判断是重试、换工具，还是直接基于知识回答
+        continue
 
     # 达到最大轮次
     answer = "⚠️ 已达到搜索上限，请尝试更具体的问题。"
