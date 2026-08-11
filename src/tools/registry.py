@@ -64,7 +64,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "parse_document",
-            "description": "解析指定PDF论文。用户提及某篇论文并想了解内容时使用。",
+            "description": "【仅在用户明确要求分析/介绍某篇具体论文时使用】解析论文全文。严禁在搜索、浏览、列举文献时调用。search_kb 的结果已经足够回答大多数问题。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -129,7 +129,7 @@ def execute_tool(name, args):
             upload_hits = _search_parsed_docs(args["query"], file_ref=file_ref)
             if upload_hits and upload_hits[0]["score"] > 0.35:
                 return {"success": True, "data": [
-                    {"text": h["text"][:300], "source": h["source"],
+                    {"text": h["text"][:600], "source": h["source"],
                      "score": h["score"]} for h in upload_hits[:5]
                 ]}
             # 上传文档无结果 → 搜整个知识库
@@ -138,8 +138,9 @@ def execute_tool(name, args):
                 return {"success": False, "error": {"code": "KB_EMPTY",
                         "message": "未找到相关内容"}}
             return {"success": True, "data": [
-                {"text": h["text"][:300],
+                {"text": h["text"][:600],
                  "source": h.get("metadata", {}).get("paper_title", ""),
+                 "section": h.get("metadata", {}).get("section", ""),
                  "score": round(h["score"], 3)} for h in kb_hits
             ]}
 
@@ -190,20 +191,6 @@ def _parse_document(file_ref):
 
     hits = _find_pdf(file_ref)
     if not hits:
-        # 文件系统没找到 → 尝试从缓存匹配标题
-        for key, doc in _parsed_docs.items():
-            title = doc["paper"].get("title", "")
-            if file_ref.lower() in title.lower() or title.lower() in file_ref.lower():
-                return {"success": True, "data": {
-                    "file_ref": key,
-                    "title": title[:100],
-                    "authors": doc["paper"].get("authors", "Unknown")[:100],
-                    "sections": len(doc["paper"].get("sections", [])),
-                    "chunks": len(doc["chunks"]),
-                    "abstract": doc["chunks"][0]["text"][:500] if doc["chunks"] else "",
-                    "message": f"(缓存) {doc['paper'].get('authors', '')[:30]}, 共 {len(doc['chunks'])} 个段落",
-                    "cached": True,
-                }}
         from config import PDF_DIR, UPLOAD_DIR
         all_pdfs = list(UPLOAD_DIR.glob("*.pdf")) + list(PDF_DIR.glob("*.pdf"))
         return {"success": False, "error": {"code": "FILE_NOT_FOUND",

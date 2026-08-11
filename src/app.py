@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import logging
 from config import UPLOAD_DIR, PDF_DIR
-from src.agent import run_agent, run_agent_stream
+from src.agent import run_agent_stream
 from src.storage.vector_store import get_stats
 from src.tools.registry import execute_tool
 
@@ -57,11 +57,6 @@ class PaperAgent:
         logger.info("临时上传区已清空")
 
     # ===== 对话 =====
-    def ask(self, user_input: str) -> tuple:
-        """处理用户输入，返回 (answer, rounds)"""
-        answer, self.messages = run_agent(user_input, self.messages)
-        return answer
-
     def ask_stream(self, user_input: str):
         """流式对话，生成器产出一个事件 dict"""
         for event in run_agent_stream(user_input, self.messages):
@@ -81,7 +76,6 @@ class PaperAgent:
             f"如需详细内容请调用 parse_document(file_ref=\"{file_ref}\")。"
         )
         if self.messages is None:
-            from src.agent import run_agent
             from config import SYSTEM_PROMPT
             self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.messages.append({"role": "system", "content": note})

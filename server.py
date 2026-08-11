@@ -31,17 +31,6 @@ def _sse_event(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    """对话入口（非流式，兼容保留）"""
-    try:
-        answer = agent.ask(req.message)
-        return {"reply": answer}
-    except Exception as e:
-        logger.error(f"chat error: {e}")
-        return JSONResponse(status_code=500, content={"reply": f"⚠️ 出错了: {e}"})
-
-
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     """流式对话（SSE）"""

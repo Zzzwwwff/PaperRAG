@@ -8,6 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import logging
+from prompt_toolkit import PromptSession
+from prompt_toolkit.styles import Style
 from src.app import get_agent
 
 logger = logging.getLogger(__name__)
@@ -41,9 +43,12 @@ def main():
     agent = get_agent()
     print(BANNER)
 
+    session = PromptSession()
+    style = Style.from_dict({"prompt": "#4a90d9 bold"})
+
     while True:
         try:
-            user_input = input(f"\n{BOLD}{GREEN}> {RESET}").strip()
+            user_input = session.prompt([("class:prompt", "\n> ")], style=style).strip()
         except (EOFError, KeyboardInterrupt):
             agent.clear_uploads()
             print(f"\n{GREEN}👋 再见{RESET}")
