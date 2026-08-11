@@ -108,3 +108,27 @@ $ python main.py
 | search_web | 2 次 |
 | parse_document | 2 次 |
 | 相同参数重复 | 1 次（第 2 次拦截） |
+
+### Web 用法
+
+```bash
+python server.py
+# 打开 http://localhost:8000
+```
+
+- 输入问题直接对话，流式逐字输出
+- 点击 **📄 上传论文** → 自动解析 → 可立即问答
+- 上传后可说"把这篇论文加进知识库"触发入库
+- 表格、代码块、LaTeX 公式自动渲染
+- 刷新页面自动恢复对话历史
+
+### API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/chat/stream` | POST | SSE 流式对话 `{"message": "..."}` |
+| `/upload` | POST | 上传 PDF（multipart/form-data） |
+| `/status` | GET | 知识库统计 |
+| `/history` | GET | 对话历史 |
+| `/docs` | GET | 可用文档列表 |
+| `/ingest?file_ref=xxx` | POST | 将临时文档入库 |
